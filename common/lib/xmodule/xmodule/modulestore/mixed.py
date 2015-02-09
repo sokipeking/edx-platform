@@ -918,13 +918,13 @@ class MixedModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase):
             yield
 
     @contextmanager
-    def bulk_operations(self, course_id):
+    def bulk_operations(self, course_id, emit_signals=True):
         """
         A context manager for notifying the store of bulk operations.
         If course_id is None, the default store is used.
         """
         store = self._get_modulestore_for_courselike(course_id)
-        with store.bulk_operations(course_id):
+        with store.bulk_operations(course_id, emit_signals):
             yield
 
     def ensure_indexes(self):

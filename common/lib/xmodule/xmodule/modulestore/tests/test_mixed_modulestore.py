@@ -13,6 +13,7 @@ from uuid import uuid4
 # before importing the module
 # TODO remove this import and the configuration -- xmodule should not depend on django!
 from django.conf import settings
+from mock_django import mock_signal_receiver
 from nose.plugins.attrib import attr
 import pymongo
 from pytz import UTC
@@ -24,6 +25,7 @@ from xmodule.contentstore.content import StaticContent
 from opaque_keys.edx.keys import CourseKey
 from xmodule.modulestore.xml_importer import import_from_xml
 from nose import SkipTest
+from xmodule.modulestore.django import SignalHandler
 
 if not settings.configured:
     settings.configure()
@@ -32,7 +34,7 @@ from opaque_keys.edx.locations import SlashSeparatedCourseKey
 from opaque_keys.edx.locator import BlockUsageLocator, CourseLocator, LibraryLocator
 from xmodule.exceptions import InvalidVersionError
 from xmodule.modulestore import ModuleStoreEnum
-from xmodule.modulestore.draft_and_published import UnsupportedRevisionError
+from xmodule.modulestore.draft_and_published import UnsupportedRevisionError, DIRECT_ONLY_CATEGORIES
 from xmodule.modulestore.exceptions import ItemNotFoundError, DuplicateCourseError, ReferentialIntegrityError, NoPathToItem
 from xmodule.modulestore.mixed import MixedModuleStore
 from xmodule.modulestore.search import path_to_location
@@ -2091,3 +2093,127 @@ class TestMixedModuleStore(CourseComparisonTest):
                 with self.store.branch_setting(ModuleStoreEnum.Branch.published_only, course_id):
                     published_vertical = self.store.get_item(vertical_loc)
                 self.assertEqual(draft_vertical.display_name, published_vertical.display_name)
+
+    def test_course_publish_signal_firing_split(self):
+        with MongoContentstoreBuilder().build() as contentstore:
+            self.store = MixedModuleStore(
+                contentstore=contentstore,
+                create_modulestore_instance=create_modulestore_instance,
+                mappings={},
+                signal_handler=SignalHandler(MixedModuleStore),
+                **self.OPTIONS
+            )
+            self.addCleanup(self.store.close_all_connections)
+
+            with self.store.default_store(ModuleStoreEnum.Type.split):
+                self.assertIsNotNone(self.store.thread_cache.default_store.signal_handler)
+
+                # Course creation should fire the signal
+                with mock_signal_receiver(SignalHandler.course_published) as receiver:
+                    self.assertEqual(receiver.call_count, 0)
+                    course = self.store.create_course('org_x', 'course_y', 'run_z', self.user_id,
+                                                      skip_auto_publish=True)
+                    self.assertEqual(receiver.call_count, 1)
+
+                    course_key = course.id
+
+                    # Test non-draftable block types. The block should be published with every change.
+                    categories = DIRECT_ONLY_CATEGORIES
+                    for block_type in categories:
+                        print 'Testing with block type {}'.format(block_type)
+                        receiver.reset_mock()
+                        block = self.store.create_item(self.user_id, course_key, block_type)
+                        self.assertEqual(receiver.call_count, 1)
+
+                        block.display_name = block_type
+                        self.store.update_item(block, self.user_id)
+                        self.assertEqual(receiver.call_count, 2)
+
+                        self.store.publish(block.location, self.user_id)
+                        self.assertEqual(receiver.call_count, 3)
+
+                    # Test a draftable block type. Although blocks of this type are only published when the publish
+                    # method is explicitly called, our implementation will still emit the signal after each update.
+                    receiver.reset_mock()
+                    block = self.store.create_item(self.user_id, course_key, 'problem')
+                    self.store.update_item(block, self.user_id)
+                    self.assertEqual(receiver.call_count, 1)
+
+                    self.store.publish(block.location, self.user_id)
+                    self.assertEqual(receiver.call_count, 2)
+
+                    # Test course re-runs
+                    receiver.reset_mock()
+                    dest_course_key = self.store.make_course_key("org.other", "course.other", "run.other")
+                    self.store.clone_course(course_key, dest_course_key, self.user_id)
+                    self.assertEqual(receiver.call_count, 1)
+
+                    # Test course imports
+                    receiver.reset_mock()
+                    dest_course_key = self.store.make_course_key('a', 'course', 'course')
+                    import_from_xml(
+                        self.store, self.user_id, DATA_DIR, ['toy'], load_error_modules=False,
+                        static_content_store=contentstore,
+                        target_course_id=dest_course_key,
+                        create_course_if_not_present=True,
+                    )
+
+                    # Note: The signal is fired once when the course is created and
+                    # a second time after the actual data import.
+                    self.assertEqual(receiver.call_count, 2)
+
+    def test_course_publish_signal_firing_mongo(self):
+        with MongoContentstoreBuilder().build() as contentstore:
+            self.store = MixedModuleStore(
+                contentstore=contentstore,
+                create_modulestore_instance=create_modulestore_instance,
+                mappings={},
+                signal_handler=SignalHandler(MixedModuleStore),
+                **self.OPTIONS
+            )
+            self.addCleanup(self.store.close_all_connections)
+
+            with self.store.default_store(ModuleStoreEnum.Type.mongo):
+                self.assertIsNotNone(self.store.thread_cache.default_store.signal_handler)
+
+                with mock_signal_receiver(SignalHandler.course_published) as receiver:
+                    self.assertEqual(receiver.call_count, 0)
+
+                    # Course creation and publication should fire the signal
+                    course = self.store.create_course('org_x', 'course_y', 'run_z', self.user_id)
+                    self.store.publish(course.location, self.user_id)
+                    self.assertEqual(receiver.call_count, 1)
+
+                    course_key = course.id
+
+                    # The signal should only be fired if the publish method is explicitly called.
+                    block_types = DIRECT_ONLY_CATEGORIES + ['problem']
+                    for block_type in block_types:
+                        print 'Testing with block type {}'.format(block_type)
+                        receiver.reset_mock()
+                        block = self.store.create_item(self.user_id, course_key, block_type)
+
+                        block.display_name = block_type
+                        self.store.update_item(block, self.user_id)
+
+                        self.store.publish(block.location, self.user_id)
+                        self.assertEqual(receiver.call_count, 1)
+
+                    # Test course re-runs
+                    receiver.reset_mock()
+                    dest_course_id = self.store.make_course_key("org.other", "course.other", "run.other")
+                    self.store.clone_course(course_key, dest_course_id, self.user_id)
+                    self.assertEqual(receiver.call_count, 1)
+
+                    # Test course imports
+                    receiver.reset_mock()
+                    dest_course_key = self.store.make_course_key('a', 'course', 'course')
+                    course = import_from_xml(
+                        self.store, self.user_id, DATA_DIR, ['toy'], load_error_modules=False,
+                        static_content_store=contentstore,
+                        target_course_id=dest_course_key,
+                        create_course_if_not_present=True,
+                    )
+                    course = course[0]
+                    self.store.publish(course.location, self.user_id)
+                    self.assertEqual(receiver.call_count, 1)
