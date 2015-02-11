@@ -107,8 +107,16 @@ function (Sjson, AsyncProcess) {
 
             if (this.showLanguageMenu) {
                 this.container.on({
-                    mouseenter: this.onContainerMouseEnter,
-                    mouseleave: this.onContainerMouseLeave
+                    mouseenter: function(event){
+			event.preventDefault();
+			$(event.currentTarget).addClass('is-opened');
+			state.videoPlayer.log('video_show_cc_menu', {});
+		    },
+                    mouseleave: function(event){
+			event.preventDefault();
+			$(event.currentTarget).removeClass('is-opened');
+			state.videoPlayer.log('video_hide_cc_menu', {});
+		    }
                 });
             }
 
@@ -128,28 +136,6 @@ function (Sjson, AsyncProcess) {
             if ((state.videoType === 'html5') && (state.config.autohideHtml5)) {
                 this.subtitlesEl.on('scroll', state.videoControl.showControls);
             }
-        },
-
-        /**
-        * @desc Opens language menu.
-        *
-        * @param {jquery Event} event
-        */
-        onContainerMouseEnter: function (event) {
-            event.preventDefault();
-
-            $(event.currentTarget).addClass('is-opened');
-        },
-
-        /**
-        * @desc Closes language menu.
-        *
-        * @param {jquery Event} event
-        */
-        onContainerMouseLeave: function (event) {
-            event.preventDefault();
-
-            $(event.currentTarget).removeClass('is-opened');
         },
 
         /**
