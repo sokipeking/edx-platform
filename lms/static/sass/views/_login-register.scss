@@ -277,7 +277,7 @@ $sm-btn-linkedin: #0077b5;
         .field-link {
             position: absolute;
             top: 0;
-            right: 0;
+            @include right(0);
             color: $m-blue-d5;
             font-weight: $font-regular;
             text-decoration: none !important; // needed but nasty
