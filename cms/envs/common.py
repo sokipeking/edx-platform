@@ -244,6 +244,7 @@ TEMPLATE_LOADERS = (
 
 MIDDLEWARE_CLASSES = (
     'request_cache.middleware.RequestCache',
+    'microsite_configuration.middleware.MicrositeMiddleware',
     'django.middleware.cache.UpdateCacheMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -701,6 +702,9 @@ INSTALLED_APPS = (
 
     # Dark-launching languages
     'dark_lang',
+
+    # Microsite configuration
+    'microsite_configuration',
 
     # Student identity reverification
     'reverification',
