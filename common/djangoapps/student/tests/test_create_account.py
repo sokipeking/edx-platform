@@ -250,7 +250,7 @@ class TestCreateAccountValidation(TestCase):
 
         # Missing
         del params["username"]
-        assert_username_error("Error (401 username). E-mail us.")
+        assert_username_error("Username must be minimum of two characters long")
 
         # Empty, too short
         for username in ["", "a"]:
@@ -265,10 +265,6 @@ class TestCreateAccountValidation(TestCase):
         params["username"] = "invalid username"
         assert_username_error("Username should only consist of A-Z and 0-9, with no spaces.")
 
-        # Matching password
-        params["username"] = params["password"] = "test_username_and_password"
-        assert_username_error("Username and password fields cannot match")
-
     def test_email(self):
         params = dict(self.minimal_params)
 
@@ -281,7 +277,7 @@ class TestCreateAccountValidation(TestCase):
 
         # Missing
         del params["email"]
-        assert_email_error("Error (401 email). E-mail us.")
+        assert_email_error("A properly formatted e-mail is required")
 
         # Empty, too short
         for email in ["", "a"]:
@@ -294,7 +290,7 @@ class TestCreateAccountValidation(TestCase):
 
         # Invalid
         params["email"] = "not_an_email_address"
-        assert_email_error("Valid e-mail is required.")
+        assert_email_error("A properly formatted e-mail is required")
 
     def test_password(self):
         params = dict(self.minimal_params)
@@ -308,7 +304,7 @@ class TestCreateAccountValidation(TestCase):
 
         # Missing
         del params["password"]
-        assert_password_error("Error (401 password). E-mail us.")
+        assert_password_error("A valid password is required")
 
         # Empty, too short
         for password in ["", "a"]:
@@ -316,6 +312,10 @@ class TestCreateAccountValidation(TestCase):
             assert_password_error("A valid password is required")
 
         # Password policy is tested elsewhere
+
+        # Matching username
+        params["username"] = params["password"] = "test_username_and_password"
+        assert_password_error("Username and password fields cannot match")
 
     def test_name(self):
         params = dict(self.minimal_params)
@@ -329,7 +329,7 @@ class TestCreateAccountValidation(TestCase):
 
         # Missing
         del params["name"]
-        assert_name_error("Error (401 name). E-mail us.")
+        assert_name_error("Your legal name must be a minimum of two characters long")
 
         # Empty, too short
         for name in ["", "a"]:
