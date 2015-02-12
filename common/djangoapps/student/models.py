@@ -1443,27 +1443,61 @@ class LinkedInAddToProfileConfiguration(ConfigurationModel):
     """
     LinkedIn Add to Profile Configuration
     """
-    # tracking code field
-    dashboard_tracking_code = models.TextField(
-        blank=True,
+    # TODO: validation
+    company_identifier = models.TextField(
         help_text=ugettext_lazy(
-            u"A dashboard tracking code field for LinkedIn Add-to-profile Certificates. "
+            u"A identifier for the company for LinkedIn Add-to-Profile URL "
             u"e.g 0_0dPSPyS070e0HsE9HNz_13_d11_"
         )
     )
 
+    tracking_code_partner = models.CharField(
+        help_text=ugettext_lazy(
+            u"A short identifier for the 'partner' value in the tracking code "
+            u"(e.g. 'edx')."
+        )
+    )
+
+    MODES_DICT = {
+        "honor": ugettext_lazy(u"{platform_name} Honor Code Certificate for {course_name}"),
+        "verified": ugettext_lazy(u"{platform_name} Verified Certificate for {course_name}"),
+        "professional": ugettext_lazy(u"{platform_name} Professional Certificate for {course_name}")
+    }
+
     @classmethod
-    def linked_in_dashboard_tracking_code_url(cls, params):
-        """
-        Get the linked-in Configuration.
+    def add_to_profile_url(cls, course_id, course_name, enrollment_mode, cert_url, source="o"):
+        """TODO
         """
         config = cls.current()
         if config.enabled:
-            return u'http://www.linkedin.com/profile/add?_ed={tracking_code}&{params}'.format(
-                tracking_code=config.dashboard_tracking_code,
+            params = config.params(course_id, course_name, enrollment_mode, cert_url, source=source)
+            return u'http://www.linkedin.com/profile/add?{params}'.format(
                 params=urlencode(params)
             )
         return None
+
+    def url_parameters(self, course_id, course_name, enrollment_mode, cert_url, source="o"):
+        """TODO
+        """
+        cert_name = MODES_DICT.get(
+            enrollment_mode,
+            _(u"{platform_name} Certificate for {course_name}")
+        ).format(
+            platform_name=settings.PLATFORM_NAME, # todo--microsites
+            course_name=course_name
+        )
+
+        return {
+            '_ed': self.company_identifier,
+            'pfCertificationName': cert_name,
+            'pfCertificationUrl': cert_url,
+            'source': source,
+            'trk': u'{partner_code}-{course_id}_{enrollment_mode}'.format(
+                partner_code=self.tracking_code_partner,
+                course_id=course_id,
+                enrollment_mode=enrollment_mode
+            )
+        }
 
     def __unicode__(self):
         return self.dashboard_tracking_code
